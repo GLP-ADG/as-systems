@@ -11,7 +11,7 @@ const MANT_URL = 'https://willowy-brigadeiros-461d60.netlify.app';
 
 const S = {
   user: null, perfil: null, listo: false,
-  productos: [], movimientos: [], prestamos: [], celulares: [], tecnicos: [], usuarios: [], config: [],
+  productos: [], movimientos: [], prestamos: [], celulares: [], tecnicos: [], usuarios: [], config: [], aplicativos: [], licencias: [],
   f: { q: '', cat: '', bajo: false, tipoMov: '', tecMov: '', desde: '', hasta: '', qCel: '', estPrest: 'prestado', qPrest: '', sub: 'existencias' }
 };
 let desuscribir = [];
@@ -140,7 +140,7 @@ B.onUser(async u => {
   if (!p || p.activo === false) { await B.logout(); return pantallaLogin(p ? 'Su usuario está desactivado. Hable con el administrador.' : 'Su usuario no está habilitado en AS SYSTEMS.'); }
   S.perfil = p;
   const subs = [['productos'], ['prestamos'], ['celulares'], ['tecnicos'], ['config'], ['movimientos', { orden: 'ts', limite: 3000 }]];
-  if (esAdmin()) subs.push(['usuarios']);
+  if (esAdmin()) subs.push(['usuarios'], ['aplicativos'], ['licencias']);
   for (const [c, o] of subs) desuscribir.push(B.escuchar(c, d => { S[c] = d; if (c === 'usuarios') { const me = d.find(x => x.id === u.uid); if (me) S.perfil = me; } refrescar(); }, o));
   marco(); S.listo = true; ir();
 });
@@ -151,7 +151,7 @@ function refrescar() { clearTimeout(tRef); tRef = setTimeout(() => S.listo && pi
 /* ------------------------------------------------------------ marco y navegación */
 const MENU = [
   ['inicio', 'Inicio', '⌂'], ['inventario', 'Inventario', '▦'], ['prestamos', 'Préstamos', '⇄'],
-  ['celulares', 'Celulares', '☏'], ['tecnicos', 'Técnicos', '☺'], ['admin', 'Administración', '⚙']
+  ['celulares', 'Celulares', '☏'], ['tecnicos', 'Técnicos', '☺'], ['aplicativos', 'Aplicativos', '◫'], ['admin', 'Administración', '⚙']
 ];
 function marco() {
   document.body.className = 'app';
@@ -161,7 +161,7 @@ function marco() {
     <div class="quien"><span>${esc(S.perfil.nombre || S.user.email)}</span><small>${ROLES[rol()]}${B.modo === 'local' ? ' · prueba local' : ''}</small></div>
     <button class="btn sec peq" id="btnSalir">Salir</button>
   </header>
-  <nav class="menu">${MENU.filter(m => m[0] !== 'admin' || esAdmin()).map(m => `<a href="#${m[0]}" data-r="${m[0]}"><i>${m[2]}</i><span>${m[1]}</span></a>`).join('')}</nav>
+  <nav class="menu">${MENU.filter(m => !['admin', 'aplicativos'].includes(m[0]) || esAdmin()).map(m => `<a href="#${m[0]}" data-r="${m[0]}"><i>${m[2]}</i><span>${m[1]}</span></a>`).join('')}</nav>
   <main id="vista"></main>
   <div id="estadoRed" class="red" hidden>Sin conexión: los cambios se guardan y se envían al volver la señal</div>`;
   $('#btnSalir').onclick = () => B.logout();
@@ -176,8 +176,8 @@ function pintarVista(nueva = false) {
   const v = $('#vista'); if (!v) return;
   const { r } = ruta();
   const act = document.activeElement; const actId = act && act.id; const pos = act && act.selectionStart;
-  const fn = { inicio: vInicio, inventario: vInventario, prestamos: vPrestamos, celulares: vCelulares, tecnicos: vTecnicos, admin: vAdmin }[r] || vInicio;
-  if (r === 'admin' && !esAdmin()) { location.hash = '#inicio'; return; }
+  const fn = { inicio: vInicio, inventario: vInventario, prestamos: vPrestamos, celulares: vCelulares, tecnicos: vTecnicos, admin: vAdmin, aplicativos: vAplicativos }[r] || vInicio;
+  if ((r === 'admin' || r === 'aplicativos') && !esAdmin()) { location.hash = '#inicio'; return; }
   v.innerHTML = fn();
   enlazar(r);
   if (nueva) window.scrollTo(0, 0);
@@ -190,7 +190,10 @@ function vInicio() {
   const prest = S.prestamos.filter(p => p.estado === 'prestado');
   const celAsig = S.celulares.filter(c => c.estado === 'asignado');
   const hoyMov = S.movimientos.filter(m => m.fecha === hoy());
-  const enlaces = cfg().enlaces || [{ nombre: 'AS Mantenimiento', url: MANT_URL }];
+  const enlaces = [...(cfg().enlaces || [{ nombre: 'AS Mantenimiento', url: MANT_URL }]),
+    ...S.aplicativos.filter(a => a.web && a.id !== 'inventario' && a.estado !== 'retirado').map(a => ({ nombre: a.nombre, url: a.web }))]
+    .filter((e, i, l) => l.findIndex(x => x.url === e.url) === i);
+  const vencen = esAdmin() ? S.licencias.filter(l => l.estado === 'activa' && l.vence && diasHasta(l.vence) <= 15) : [];
   return `
   <section class="saludo"><h2>Hola, ${esc((S.perfil.nombre || '').split(' ').slice(0, 2).join(' '))}</h2><p>${new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></section>
   <section class="mosaicos">
@@ -199,6 +202,7 @@ function vInicio() {
     <a class="mosaico" href="#celulares"><i>☏</i><b>Celulares</b><span>${S.celulares.length} equipos · ${celAsig.length} asignados</span></a>
     <a class="mosaico" href="#tecnicos"><i>☺</i><b>Técnicos</b><span>${tecnicosActivos().length} activos</span></a>
     ${enlaces.map(e => `<a class="mosaico externo" href="${esc(e.url)}" target="_blank" rel="noopener"><i>↗</i><b>${esc(e.nombre)}</b><span>Abrir aplicativo</span></a>`).join('')}
+    ${esAdmin() ? `<a class="mosaico" href="#aplicativos"><i>◫</i><b>Aplicativos y licencias</b><span>${S.aplicativos.length} aplicativos · ${S.licencias.filter(l => estadoLic(l) === 'activa').length} licencias activas</span>${vencen.length ? `<em class="alerta">${vencen.length} por vencer</em>` : ''}</a>` : ''}
     ${esAdmin() ? `<a class="mosaico" href="#admin"><i>⚙</i><b>Administración</b><span>Usuarios, importar Excel, copias</span></a>` : ''}
   </section>
   <section class="dos">
@@ -267,52 +271,94 @@ function vInventario() {
   ${cuerpo}`;
 }
 
+/* Grilla para registrar muchos materiales a la vez: se escribe la cantidad al frente de cada uno */
+function grillaMateriales(cont, { soloHerramientas = false, validarStock = false } = {}) {
+  const cant = new Map(); const f = { q: '', cat: '', solo: false };
+  const base = () => S.productos.filter(p => !soloHerramientas || p.tipo === 'herramienta');
+  const cats = [...new Set(base().map(p => p.categoria || 'SIN CATEGORÍA'))].sort();
+  cont.innerHTML = `<div class="grilla-filtros"><input type="search" class="gq" placeholder="Filtrar por código o nombre (ej.: 3/4, silleta, tapón)…">
+    <select class="gcat"><option value="">Todas las categorías</option>${cats.map(c => `<option>${esc(c)}</option>`).join('')}</select>
+    <label class="chk"><input type="checkbox" class="gsolo"> Solo los que llevan cantidad</label></div>
+    <div class="grilla"><table class="tabla lineas"><thead><tr><th>Código</th><th>Descripción</th><th>Und</th><th class="num">Hay</th><th style="width:110px">Cantidad</th></tr></thead><tbody></tbody></table></div>
+    <div class="grilla-resumen"></div>`;
+  const tb = $('tbody', cont), res = $('.grilla-resumen', cont);
+  const resumen = () => {
+    const sel = seleccion(); const malos = validarStock ? sel.filter(l => l.cant > Number(l.p.stock || 0)) : [];
+    res.innerHTML = sel.length ? `<b>${sel.length}</b> material${sel.length > 1 ? 'es' : ''} con cantidad${malos.length ? ` · <span class="rojo-t">${malos.length} superan la existencia</span>` : ''} <button type="button" class="lnk gver">Ver solo estos</button> <button type="button" class="lnk rojo glimpiar">Limpiar</button>`
+      : 'Escriba la cantidad al frente de cada material que va a registrar. Puede filtrar y seguir agregando; lo escrito no se pierde.';
+  };
+  const pintar = () => {
+    const q = norm(f.q).split(/\s+/).filter(Boolean);
+    let l = base().filter(p => (!f.cat || (p.categoria || 'SIN CATEGORÍA') === f.cat) && (!f.solo || Number(cant.get(p.codigo)) > 0));
+    if (q.length) l = l.filter(p => { const t = norm(p.codigo + ' ' + p.nombre); return q.every(w => t.includes(w)); });
+    l.sort((a, b) => (a.categoria || '').localeCompare(b.categoria || '') || a.nombre.localeCompare(b.nombre));
+    const total = l.length; l = l.slice(0, 300);
+    tb.innerHTML = l.map(p => { const v = cant.get(p.codigo) || ''; const exc = validarStock && Number(v) > Number(p.stock || 0);
+      return `<tr class="${Number(v) > 0 ? 'con' : ''} ${exc ? 'exc' : ''}"><td><b>${esc(p.codigo)}</b></td><td>${esc(p.nombre)}</td><td>${esc(p.unidad || '')}</td><td class="num ${Number(p.stock) <= 0 ? 'rojo-t' : ''}">${fnum(p.stock)}</td>
+      <td><input type="number" inputmode="decimal" step="any" min="0" data-c="${esc(p.codigo)}" value="${esc(v)}" enterkeyhint="next"></td></tr>`; }).join('')
+      + (total > 300 ? `<tr><td colspan="5" class="nota">Hay ${total} resultados; filtre para ver el resto.</td></tr>` : '')
+      + (!total ? `<tr><td colspan="5" class="vacio-peq">${S.productos.length ? 'Sin resultados.' : 'El catálogo está vacío. Importe el Excel o cree productos.'}</td></tr>` : '');
+    resumen();
+  };
+  $('.gq', cont).oninput = e => { f.q = e.target.value; pintar(); };
+  $('.gcat', cont).onchange = e => { f.cat = e.target.value; pintar(); };
+  $('.gsolo', cont).onchange = e => { f.solo = e.target.checked; pintar(); };
+  tb.addEventListener('input', e => { const c = e.target.dataset.c; if (c === undefined) return;
+    if (Number(e.target.value) > 0) cant.set(c, e.target.value); else cant.delete(c);
+    const tr = e.target.closest('tr'); const p = prodPorCodigo(c);
+    tr.classList.toggle('con', Number(e.target.value) > 0); tr.classList.toggle('exc', validarStock && Number(e.target.value) > Number(p?.stock || 0)); resumen(); });
+  tb.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset.c !== undefined) { e.preventDefault();
+    const ins = $$('input[data-c]', tb); const i = ins.indexOf(e.target); (ins[i + 1] || ins[i]).focus(); } });
+  res.addEventListener('click', e => {
+    if (e.target.classList.contains('gver')) { f.solo = true; $('.gsolo', cont).checked = true; pintar(); }
+    if (e.target.classList.contains('glimpiar')) { cant.clear(); f.solo = false; $('.gsolo', cont).checked = false; pintar(); }
+  });
+  function seleccion() { return [...cant.entries()].map(([c, v]) => ({ p: prodPorCodigo(c), cant: Number(v) })).filter(l => l.p && l.cant > 0); }
+  pintar(); setTimeout(() => $('.gq', cont).focus(), 60);
+  return { seleccion, vaciar: () => { cant.clear(); pintar(); } };
+}
+
 function formMovimiento(tipo) {
   const esSal = tipo === 'salida';
-  const lineas = [];
-  const m = modal(esSal ? 'Salida de bodega' : 'Entrada a bodega', `
+  const m = modal(esSal ? 'Salida de bodega (varios materiales)' : 'Entrada a bodega (varios materiales)', `
     <form id="fMov">
-      <div class="g2">
+      <div class="g4">
         <label>Fecha<input type="date" name="fecha" value="${hoy()}" required></label>
         ${esSal ? `<label>Técnico que recibe<select name="tec" required>${opcionesTecnicos()}</select></label>`
-               : `<label>Proveedor / origen<input name="proveedor" placeholder="Ej.: proveedor, traslado, devolución de obra"></label>`}
+               : `<label>Proveedor / origen<input name="proveedor" placeholder="Proveedor, traslado, devolución de obra"></label>`}
         <label>${esSal ? 'Destino / obra / dirección' : 'N.º factura o remisión'}<input name="${esSal ? 'destino' : 'doc'}"></label>
-        <label>${esSal ? 'N.º vale u orden (opcional)' : 'Observación'}<input name="${esSal ? 'doc' : 'obs'}"></label>
+        <label>${esSal ? 'N.º vale u orden' : 'Observación'}<input name="${esSal ? 'doc' : 'obs'}"></label>
       </div>
       ${esSal ? '<label>Observación<input name="obs"></label>' : ''}
-      <h4>Materiales</h4><div id="busc"></div>
-      <div id="lineas"></div>
-    </form>`, { ancho: 'ancho', botones: `<button class="btn sec" data-cerrar>Cancelar</button><button class="btn ${esSal ? 'naranja' : 'verde'}" id="bGuardarMov">Registrar ${esSal ? 'salida' : 'entrada'}</button>` });
-  const pintar = () => {
-    $('#lineas', m).innerHTML = lineas.length ? `<table class="tabla lineas"><thead><tr><th>Producto</th><th class="num">Hay</th><th style="width:110px">Cantidad</th><th></th></tr></thead><tbody>
-    ${lineas.map((l, i) => `<tr><td><b>${esc(l.p.codigo)}</b> ${esc(l.p.nombre)} <small>${esc(l.p.unidad || '')}</small></td><td class="num">${fnum(l.p.stock)}</td>
-    <td><input type="number" step="any" min="0" data-cant="${i}" value="${l.cant}" required></td><td><button type="button" class="lnk rojo" data-quitar="${i}">Quitar</button></td></tr>`).join('')}</tbody></table>`
-      : '<p class="vacio-peq">Busque y toque los materiales para agregarlos. Puede agregar varios en el mismo registro.</p>';
-  };
-  buscadorProducto($('#busc', m), { alElegir: p => { if (!lineas.some(l => l.p.codigo === p.codigo)) lineas.push({ p, cant: '' }); pintar(); setTimeout(() => { const i = $(`[data-cant="${lineas.findIndex(l => l.p.codigo === p.codigo)}"]`, m); i && i.focus(); }, 30); } });
-  pintar();
-  $('#lineas', m).addEventListener('input', e => { if (e.target.dataset.cant !== undefined) lineas[+e.target.dataset.cant].cant = e.target.value; });
-  $('#lineas', m).addEventListener('click', e => { const q = e.target.dataset.quitar; if (q !== undefined) { lineas.splice(+q, 1); pintar(); } });
+    </form>
+    <div id="grilla"></div>`, { ancho: 'ancho', botones: `<button class="btn sec" data-cerrar>Cancelar</button><button class="btn ${esSal ? 'naranja' : 'verde'}" id="bGuardarMov">Registrar ${esSal ? 'salida' : 'entrada'}</button>` });
+  const g = grillaMateriales($('#grilla', m), { validarStock: esSal });
   $('#bGuardarMov', m).onclick = async () => {
-    const f = new FormData($('#fMov', m));
+    const f = new FormData($('#fMov', m)); const sel = g.seleccion();
     if (esSal && !f.get('tec')) return toast('Seleccione el técnico que recibe.', 'error');
-    if (!lineas.length) return toast('Agregue al menos un material.', 'error');
-    if (lineas.some(l => !(Number(l.cant) > 0))) return toast('Escriba la cantidad de cada material.', 'error');
-    if (esSal) { const falta = lineas.find(l => Number(l.cant) > Number(prodPorCodigo(l.p.codigo)?.stock || 0)); if (falta) return toast(`No hay suficiente ${falta.p.nombre}: hay ${fnum(falta.p.stock)}.`, 'error'); }
+    if (!sel.length) return toast('Escriba la cantidad de al menos un material.', 'error');
+    if (esSal) { const falta = sel.find(l => l.cant > Number(l.p.stock || 0)); if (falta) return toast(`No hay suficiente ${falta.p.nombre}: hay ${fnum(falta.p.stock)}.`, 'error'); }
+    if (!(await confirmarLista(esSal ? 'salida' : 'entrada', sel))) return;
     const t = S.tecnicos.find(x => x.id === f.get('tec'));
     const b = $('#bGuardarMov', m); ocupado(b, true);
-    const vale = nuevoId(); let ok = 0;
+    const vale = nuevoId();
     try {
-      for (const l of lineas) {
-        const c = Number(l.cant);
-        await B.movimiento({ tipo, delta: esSal ? -c : c, codigo: l.p.codigo, producto: l.p.nombre, unidad: l.p.unidad || '', cantidad: c,
-          fecha: f.get('fecha'), tecnico: t?.nombre || '', tecnicoId: t?.id || '', destino: f.get('destino') || '', doc: f.get('doc') || '',
-          proveedor: f.get('proveedor') || '', obs: f.get('obs') || '', vale, ...yo(), usuario: yo().nombre });
-        ok++;
-      }
-      cerrarModal(); toast(`${esSal ? 'Salida' : 'Entrada'} registrada (${ok} ítem${ok > 1 ? 's' : ''})`);
-    } catch (e) { toast((ok ? `Se registraron ${ok}. ` : '') + errorTexto(e), 'error'); ocupado(b, false); lineas.splice(0, ok); pintar(); }
+      await B.movimientos(sel.map(l => ({ tipo, delta: esSal ? -l.cant : l.cant, codigo: l.p.codigo, producto: l.p.nombre, unidad: l.p.unidad || '', cantidad: l.cant,
+        fecha: f.get('fecha'), tecnico: t?.nombre || '', tecnicoId: t?.id || '', destino: f.get('destino') || '', doc: f.get('doc') || '',
+        proveedor: f.get('proveedor') || '', obs: f.get('obs') || '', vale, ...yo(), usuario: yo().nombre })));
+      cerrarModal(); toast(`${esSal ? 'Salida' : 'Entrada'} registrada: ${sel.length} material${sel.length > 1 ? 'es' : ''}`);
+    } catch (e) { toast(errorTexto(e), 'error'); ocupado(b, false); }
   };
+}
+// Resumen antes de guardar (no usa el modal principal para no perder lo escrito)
+function confirmarLista(que, sel) {
+  return new Promise(res => {
+    const d = document.createElement('div'); d.className = 'modal-fondo'; d.style.zIndex = 150;
+    d.innerHTML = `<div class="modal"><div class="modal-cab"><h3>Confirmar ${que}</h3></div><div class="modal-cuerpo"><ul class="lista">${sel.map(l => `<li><b>${fnum(l.cant)} ${esc(l.p.unidad || '')}</b> · ${esc(l.p.codigo)} ${esc(l.p.nombre)}</li>`).join('')}</ul></div>
+      <div class="modal-pie"><button class="btn sec" data-r="0">Corregir</button><button class="btn" data-r="1">Sí, registrar ${sel.length}</button></div></div>`;
+    d.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b) { d.remove(); res(b.dataset.r === '1'); } });
+    document.body.appendChild(d);
+  });
 }
 
 function formAjuste() {
@@ -391,31 +437,29 @@ function vPrestamos() {
   </tbody></table></div>` : '<div class="vacio"><p>No hay registros con ese filtro.</p></div>'}`;
 }
 function formPrestamo() {
-  let prod = null;
-  const m = modal('Prestar herramienta o equipo', `<form id="fPr">
-    <div class="g2"><label>Técnico<select name="tec" required>${opcionesTecnicos()}</select></label><label>Fecha<input type="date" name="fecha" value="${hoy()}"></label></div>
-    <label class="chk"><input type="checkbox" id="libre"> No está en el catálogo (escribir nombre)</label>
-    <div id="zonaCat"><div id="busc"></div><div id="sel"></div></div>
-    <div id="zonaLibre" hidden><label>Herramienta o equipo<input name="libre" placeholder="Ej.: Taladro DeWalt serie 1234"></label></div>
-    <div class="g2"><label>Cantidad<input type="number" name="cant" value="1" min="1" step="any"></label><label>Observación<input name="obs" placeholder="Estado en que sale, accesorios…"></label></div>
-  </form>`, { botones: `<button class="btn sec" data-cerrar>Cancelar</button><button class="btn naranja" id="bGPr">Registrar préstamo</button>` });
-  buscadorProducto($('#busc', m), { soloHerramientas: !!S.productos.some(p => p.tipo === 'herramienta'), alElegir: p => { prod = p; $('#sel', m).innerHTML = `<div class="sel-prod"><b>${esc(p.codigo)}</b> ${esc(p.nombre)} · disponibles: <b>${fnum(p.stock)}</b></div>`; } });
-  $('#libre', m).onchange = e => { $('#zonaCat', m).hidden = e.target.checked; $('#zonaLibre', m).hidden = !e.target.checked; };
+  const hayHerr = S.productos.some(p => p.tipo === 'herramienta');
+  const m = modal('Prestar herramientas o equipos', `<form id="fPr">
+    <div class="g4"><label>Técnico<select name="tec" required>${opcionesTecnicos()}</select></label><label>Fecha<input type="date" name="fecha" value="${hoy()}"></label>
+    <label style="grid-column:span 2">Observación<input name="obs" placeholder="Estado en que sale, accesorios…"></label></div>
+    ${hayHerr ? '' : '<p class="nota">Aún no hay productos marcados como herramienta; se muestra todo el catálogo. Para marcarlos: Inventario → Editar → Tipo “Herramienta o equipo”.</p>'}
+    </form><div id="grilla"></div>
+    <label>Otros equipos que no están en el catálogo (uno por línea)<textarea id="libres" rows="2" placeholder="Ej.: Taladro DeWalt serie 1234"></textarea></label>`,
+    { ancho: 'ancho', botones: `<button class="btn sec" data-cerrar>Cancelar</button><button class="btn naranja" id="bGPr">Registrar préstamo</button>` });
+  const g = grillaMateriales($('#grilla', m), { soloHerramientas: hayHerr, validarStock: true });
   $('#bGPr', m).onclick = async () => {
     const f = new FormData($('#fPr', m)); const t = S.tecnicos.find(x => x.id === f.get('tec'));
     if (!t) return toast('Seleccione el técnico.', 'error');
-    const libre = $('#libre', m).checked; const cant = Number(f.get('cant')) || 1;
-    if (!libre && !prod) return toast('Seleccione la herramienta.', 'error');
-    if (libre && !f.get('libre').trim()) return toast('Escriba la herramienta o equipo.', 'error');
-    const id = nuevoId();
-    const data = { herramienta: libre ? f.get('libre').trim().toUpperCase() : prod.nombre, codigo: libre ? '' : prod.codigo, cantidad: cant, tecnico: t.nombre, tecnicoId: t.id,
-      fechaSalida: f.get('fecha'), estado: 'prestado', obs: f.get('obs') || '', ...yo(), usuario: yo().nombre, ts: Date.now() };
+    const sel = g.seleccion(); const libres = $('#libres', m).value.split('\n').map(x => x.trim()).filter(Boolean);
+    if (!sel.length && !libres.length) return toast('Escriba la cantidad de al menos una herramienta.', 'error');
+    const falta = sel.find(l => l.cant > Number(l.p.stock || 0)); if (falta) return toast(`No hay suficiente ${falta.p.nombre}: hay ${fnum(falta.p.stock)}.`, 'error');
+    const base = { tecnico: t.nombre, tecnicoId: t.id, fechaSalida: f.get('fecha'), estado: 'prestado', obs: f.get('obs') || '', ...yo(), usuario: yo().nombre, ts: Date.now() };
     const b = $('#bGPr', m); ocupado(b, true);
     try {
-      if (libre) await B.guardar('prestamos', id, data);
-      else await B.movimiento({ tipo: 'prestamo', delta: -cant, cantidad: cant, codigo: prod.codigo, producto: prod.nombre, unidad: prod.unidad || '', fecha: f.get('fecha'),
-        tecnico: t.nombre, tecnicoId: t.id, obs: 'Préstamo', ...yo(), usuario: yo().nombre, _prestamo: { id, data } });
-      cerrarModal(); toast('Préstamo registrado');
+      if (sel.length) await B.movimientos(sel.map(l => { const id = nuevoId(); return { tipo: 'prestamo', delta: -l.cant, cantidad: l.cant, codigo: l.p.codigo, producto: l.p.nombre, unidad: l.p.unidad || '',
+        fecha: f.get('fecha'), tecnico: t.nombre, tecnicoId: t.id, obs: 'Préstamo', ...yo(), usuario: yo().nombre,
+        _prestamo: { id, data: { ...base, herramienta: l.p.nombre, codigo: l.p.codigo, cantidad: l.cant } } }; }));
+      if (libres.length) await B.lote(libres.map(x => ({ col: 'prestamos', id: nuevoId(), data: { ...base, herramienta: x.toUpperCase(), codigo: '', cantidad: 1 } })));
+      cerrarModal(); toast(`Préstamo registrado: ${sel.length + libres.length} ítem(s) a ${t.nombre}`);
     } catch (e) { toast(errorTexto(e), 'error'); ocupado(b, false); }
   };
 }
@@ -569,8 +613,8 @@ function vAdmin() {
     <td class="acc">${u.rol === 'admin' ? '' : `<button class="lnk" data-editusr="${u.id}">Editar</button>`}</td></tr>`).join('')}</tbody></table></div></section>
 
   <section class="tarjeta"><h3>Cargar información desde Excel</h3>
-    <p class="nota">Aquí se sube el Excel que se exporte del inventario del computador de KarlaM (catálogo con existencias, entradas, salidas, préstamos), el inventario de celulares o una lista de técnicos. El sistema reconoce las hojas por su nombre y por los títulos de las columnas, y le muestra todo antes de guardar.</p>
-    <label class="subir"><input type="file" id="fileImp" accept=".xlsx,.xlsm,.xls,.csv" hidden><span class="btn">Seleccionar archivo Excel…</span></label>
+    <p class="nota">Aquí se suben los Excel que se exporten del inventario del computador de KarlaM (catálogo con existencias, entradas, salidas, préstamos), el inventario de celulares o una lista de técnicos. El sistema reconoce las hojas por su nombre y por los títulos de las columnas, y le muestra todo antes de guardar.</p>
+    <label class="subir"><input type="file" id="fileImp" accept=".xlsx,.xlsm,.xls,.csv" multiple hidden><span class="btn">Seleccionar archivos Excel…</span></label>
     <div id="previa"></div></section>
 
   <section class="tarjeta"><h3>Datos iniciales</h3>
@@ -606,17 +650,20 @@ function formUsuario(id) {
 }
 
 let HOJAS = null;
-async function previaImportar(file) {
+async function previaImportar(files) {
   const cont = $('#previa'); cont.innerHTML = '<p class="nota">Leyendo archivo…</p>';
-  try { HOJAS = await leerExcel(file); } catch (e) { cont.innerHTML = ''; return toast('No se pudo leer el archivo: ' + e.message, 'error'); }
+  HOJAS = [];
+  try { for (const file of files) { const hs = await leerExcel(file); hs.forEach(h => { h.nombre = files.length > 1 ? `${file.name} › ${h.nombre}` : h.nombre; }); HOJAS.push(...hs); } }
+  catch (e) { cont.innerHTML = ''; return toast('No se pudo leer el archivo: ' + e.message, 'error'); }
   const hayStock = HOJAS.some(h => h.tipo === 'productos' && h.columnas?.includes('cantidad'));
-  cont.innerHTML = `<h4>${esc(file.name)}</h4>
+  const yaHayStock = S.productos.some(p => Number(p.stock) !== 0);
+  cont.innerHTML = `<h4>${files.map(f => esc(f.name)).join(' + ')}</h4>
   <div class="tabla-cont"><table class="tabla"><thead><tr><th>Hoja</th><th>Filas</th><th>Columnas reconocidas</th><th>Importar como</th></tr></thead><tbody>
   ${HOJAS.map((h, i) => `<tr><td><b>${esc(h.nombre)}</b></td><td class="num">${h.total || 0}</td><td><small>${(h.columnas || []).join(', ') || '—'}</small></td>
   <td><select data-hoja="${i}">${Object.entries(TIPOS).map(([k, v]) => `<option value="${k}" ${k === h.tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>
   <label class="chk"><input type="checkbox" id="optStock" ${hayStock ? 'checked' : ''}> Tomar la existencia (cantidad/stock/saldo) del Excel como existencia actual</label>
-  <label class="chk"><input type="checkbox" id="optMov" ${hayStock ? '' : 'checked'}> Las entradas y salidas del Excel suman y restan a la existencia</label>
-  <p class="nota">Si el Excel trae el saldo actual y también el historial, deje marcada solo la primera opción: así el historial queda como consulta y no se descuenta dos veces.</p>
+  <label class="chk"><input type="checkbox" id="optMov" ${hayStock || yaHayStock ? '' : 'checked'}> Las entradas y salidas del Excel suman y restan a la existencia</label>
+  <p class="nota">Si sube las existencias (saldo) y los movimientos, selecciónelos juntos y deje marcada solo la primera opción: así el historial queda como consulta y no se descuenta dos veces.</p>
   <button class="btn verde" id="bImportar">Importar a AS SYSTEMS</button>`;
   $$('[data-hoja]', cont).forEach(s => s.onchange = () => { HOJAS[+s.dataset.hoja].tipo = s.value; });
   $('#bImportar').onclick = async () => {
@@ -650,6 +697,112 @@ async function cargarSemilla() {
   try { await B.lote(ops); toast('Técnicos y celulares cargados'); } catch (e) { toast(errorTexto(e), 'error'); }
 }
 
+
+/* ------------------------------------------------------------ APLICATIVOS Y LICENCIAS (aplicativo madre) */
+const diasHasta = f => f ? Math.ceil((new Date(f + 'T23:59:59') - Date.now()) / 864e5) : 9999;
+const estadoLic = l => l.estado !== 'activa' ? l.estado : (l.vence && diasHasta(l.vence) < 0 ? 'vencida' : 'activa');
+const EST_LIC = { activa: 'Activa', vencida: 'Vencida', suspendida: 'Suspendida', prueba: 'Prueba' };
+const PLANES = { gratis: 'Sin costo', mensual: 'Mensual', anual: 'Anual', unico: 'Pago único' };
+const CATALOGO_BASE = [
+  { id: 'inventario', nombre: 'AS SYSTEMS · Inventario', tipo: 'Web + APK + PC', descripcion: 'Inventario de bodega, préstamo de herramientas, celulares y técnicos', web: 'https://glp-adg.github.io/as-systems/', repo: 'https://github.com/GLP-ADG/as-systems', firebase: 'as-systems-97612', estado: 'produccion' },
+  { id: 'glp', nombre: 'GLP Araucana', tipo: 'APK', descripcion: 'Lecturas de estaciones, trasiegos, mantenimiento y balance de GLP', web: '', repo: '', firebase: 'glp-adg', estado: 'produccion' },
+  { id: 'adgmov', nombre: 'ADG Movimientos', tipo: 'APK', descripcion: 'Control de movimientos financieros con usuarios', web: '', repo: '', firebase: 'adg-movimientos', estado: 'produccion' },
+  { id: 'mantenimiento', nombre: 'AS Mantenimiento', tipo: 'Web + APK', descripcion: 'Planes de mantenimiento preventivo con IA, por membresía', web: MANT_URL, repo: '', firebase: 'as-mantenimiento', estado: 'produccion' },
+  { id: 'talento', nombre: 'Talento Humano', tipo: 'PC', descripcion: 'Base maestra de personal, contratos y formato FT-TH-01', web: '', repo: '', firebase: 'talento-humano-adg', estado: 'produccion' }
+];
+const EST_APP = { produccion: 'En uso', desarrollo: 'En desarrollo', retirado: 'Retirado' };
+function codigoLicencia() { const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const r = n => [...crypto.getRandomValues(new Uint8Array(n))].map(x => a[x % a.length]).join(''); return `AS-${r(4)}-${r(4)}-${r(4)}`; }
+
+function vAplicativos() {
+  const sub = S.f.subApp || 'catalogo';
+  const apps = S.aplicativos.length ? S.aplicativos.slice().sort((a, b) => (a.orden ?? 99) - (b.orden ?? 99) || a.nombre.localeCompare(b.nombre)) : [];
+  const nomApp = id => (S.aplicativos.find(a => a.id === id) || CATALOGO_BASE.find(a => a.id === id))?.nombre || id;
+  let cuerpo = '';
+  if (sub === 'catalogo') {
+    cuerpo = !apps.length ? `<div class="vacio"><p>Aún no ha registrado sus aplicativos.</p><button class="btn" id="bSemApps">Registrar mis 5 aplicativos</button></div>` :
+    `<div class="tarjetas">${apps.map(a => { const lic = S.licencias.filter(l => l.app === a.id); const act = lic.filter(l => estadoLic(l) === 'activa');
+      return `<div class="tarjeta app-card"><div class="cab-tarj"><b>${esc(a.nombre)}</b><span class="tag ${a.estado === 'produccion' ? 'entrada' : a.estado === 'retirado' ? 'baja' : 'ajuste'}">${EST_APP[a.estado] || a.estado}</span></div>
+      <p class="nota">${esc(a.descripcion || '')}</p>
+      <div class="tec-datos"><span>◫ ${esc(a.tipo || '')}</span><span>🔑 ${act.length} licencia${act.length === 1 ? '' : 's'} activa${act.length === 1 ? '' : 's'} de ${lic.length}</span>${a.firebase ? `<span>☁ Firebase: ${esc(a.firebase)}</span>` : ''}${a.version ? `<span>v${esc(a.version)}</span>` : ''}</div>
+      <div class="tec-acc">${a.web ? `<a class="lnk" href="${esc(a.web)}" target="_blank" rel="noopener">Abrir web</a>` : ''}${a.apk ? `<a class="lnk" href="${esc(a.apk)}" target="_blank" rel="noopener">APK</a>` : ''}${a.repo ? `<a class="lnk" href="${esc(a.repo)}" target="_blank" rel="noopener">GitHub</a>` : ''}<button class="lnk" data-editapp="${a.id}">Editar</button></div></div>`; }).join('')}</div>`;
+  } else {
+    const q = norm(S.f.qLic || '');
+    let l = S.licencias.slice().sort((a, b) => (a.vence || '9').localeCompare(b.vence || '9'));
+    if (S.f.appLic) l = l.filter(x => x.app === S.f.appLic);
+    if (q) l = l.filter(x => norm([x.cliente, x.nit, x.contacto, x.id, nomApp(x.app)].join(' ')).includes(q));
+    const tot = { activa: 0, vencida: 0, suspendida: 0, prueba: 0 }; S.licencias.forEach(x => tot[estadoLic(x)] = (tot[estadoLic(x)] || 0) + 1);
+    const ingresosMes = S.licencias.filter(x => estadoLic(x) === 'activa').reduce((s, x) => s + (x.plan === 'mensual' ? Number(x.valor) || 0 : x.plan === 'anual' ? (Number(x.valor) || 0) / 12 : 0), 0);
+    cuerpo = `<div class="chips">${Object.entries(tot).filter(x => x[1]).map(([k, n]) => `<span class="chip">${EST_LIC[k]} <b>${n}</b></span>`).join('')}${ingresosMes ? `<span class="chip">Ingreso mensual estimado <b>$${fnum(Math.round(ingresosMes))}</b></span>` : ''}</div>
+    <div class="filtros"><input type="search" id="fqlic" placeholder="Cliente, NIT, código…" value="${esc(S.f.qLic || '')}">
+      <select id="fapplic"><option value="">Todos los aplicativos</option>${(apps.length ? apps : CATALOGO_BASE).map(a => `<option value="${a.id}" ${S.f.appLic === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></div>
+    ${l.length ? `<div class="tabla-cont"><table class="tabla"><thead><tr><th>Cliente</th><th>Aplicativo</th><th>Plan</th><th>Vence</th><th>Estado</th><th>Código de licencia</th><th></th></tr></thead><tbody>
+    ${l.map(x => { const e = estadoLic(x); const d = diasHasta(x.vence);
+      return `<tr><td><b>${esc(x.cliente)}</b>${x.nit ? `<small class="obs">NIT ${esc(x.nit)}</small>` : ''}${x.nombreApp ? `<small class="obs">Se muestra como: ${esc(x.nombreApp)}</small>` : ''}</td><td>${esc(nomApp(x.app))}</td>
+      <td>${PLANES[x.plan] || x.plan}${Number(x.valor) ? `<small class="obs">$${fnum(x.valor)}</small>` : ''}</td>
+      <td>${x.vence ? ffecha(x.vence) : 'Sin vencimiento'}${x.vence && e === 'activa' && d <= 15 ? `<small class="obs rojo-t">en ${d} días</small>` : ''}</td>
+      <td><span class="tag ${e === 'activa' ? 'entrada' : e === 'prueba' ? 'ajuste' : 'baja'}">${EST_LIC[e]}</span></td>
+      <td class="mono">${esc(x.id)}</td><td class="acc"><button class="lnk" data-copiarlic="${x.id}">Copiar</button><button class="lnk" data-editlic="${x.id}">Editar</button></td></tr>`; }).join('')}</tbody></table></div>`
+    : `<div class="vacio"><p>${S.licencias.length ? 'Sin resultados.' : 'Aún no hay licencias. Cree una por cada empresa que use un aplicativo, incluida Araucana de Gases.'}</p></div>`}
+    <p class="nota">Cada aplicativo replicado consulta su código de licencia al abrir. Si la licencia está suspendida o vencida, el aplicativo no deja entrar y muestra un aviso para comunicarse con usted.</p>`;
+  }
+  return `<div class="cab-vista"><h2>Aplicativos y licencias</h2><div class="acciones">${sub === 'catalogo' ? '<button class="btn sec" id="bNuevaApp">+ Aplicativo</button>' : '<button class="btn" id="bNuevaLic">+ Licencia</button>'}</div></div>
+  <div class="pestanas"><button data-subapp="catalogo" class="${sub === 'catalogo' ? 'act' : ''}">Mis aplicativos</button><button data-subapp="licencias" class="${sub === 'licencias' ? 'act' : ''}">Clientes y licencias</button></div>${cuerpo}`;
+}
+function formApp(id) {
+  const a = id ? S.aplicativos.find(x => x.id === id) : null;
+  const m = modal(a ? 'Editar aplicativo' : 'Nuevo aplicativo', `<form id="fApp">
+    <div class="g2"><label>Nombre<input name="nombre" required value="${esc(a?.nombre || '')}"></label><label>Tipo<input name="tipo" value="${esc(a?.tipo || 'Web + APK')}" placeholder="Web, APK, PC"></label></div>
+    <label>Descripción<input name="descripcion" value="${esc(a?.descripcion || '')}"></label>
+    <div class="g2"><label>Enlace web<input name="web" value="${esc(a?.web || '')}" placeholder="https://…"></label><label>Enlace de descarga APK<input name="apk" value="${esc(a?.apk || '')}" placeholder="https://…"></label></div>
+    <div class="g2"><label>Repositorio GitHub<input name="repo" value="${esc(a?.repo || '')}"></label><label>Proyecto Firebase<input name="firebase" value="${esc(a?.firebase || '')}"></label></div>
+    <div class="g2"><label>Versión<input name="version" value="${esc(a?.version || '')}"></label><label>Estado<select name="estado">${Object.entries(EST_APP).map(([k, v]) => `<option value="${k}" ${(a?.estado || 'produccion') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
+    <label>Notas<input name="notas" value="${esc(a?.notas || '')}"></label></form>`,
+    { botones: `${a ? '<button class="btn rojo izq" id="bBorrarApp">Eliminar</button>' : ''}<button class="btn sec" data-cerrar>Cancelar</button><button class="btn" id="bGApp">Guardar</button>` });
+  $('#bGApp', m).onclick = async () => {
+    const f = Object.fromEntries(new FormData($('#fApp', m))); if (!f.nombre.trim()) return toast('Escriba el nombre.', 'error');
+    for (const k of Object.keys(f)) f[k] = f[k].trim();
+    try { await B.guardar('aplicativos', a?.id || slug(f.nombre), { ...f, act: Date.now() }); cerrarModal(); toast('Aplicativo guardado'); } catch (e) { toast(errorTexto(e), 'error'); }
+  };
+  const bb = $('#bBorrarApp', m); if (bb) bb.onclick = async () => {
+    const n = S.licencias.filter(l => l.app === a.id).length;
+    if (await confirmar(`¿Quitar <b>${esc(a.nombre)}</b> del catálogo?${n ? ` Tiene ${n} licencia(s); esas se conservan.` : ''} El aplicativo en sí no se borra ni deja de funcionar.`, { peligro: true, si: 'Quitar' })) {
+      try { await B.borrar('aplicativos', a.id); toast('Aplicativo quitado del catálogo'); } catch (e) { toast(errorTexto(e), 'error'); } }
+  };
+}
+function formLicencia(id) {
+  const x = id ? S.licencias.find(l => l.id === id) : null;
+  const apps = S.aplicativos.length ? S.aplicativos : CATALOGO_BASE;
+  const venceDef = () => { const d = new Date(); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 10); };
+  const m = modal(x ? 'Editar licencia' : 'Nueva licencia', `<form id="fLic">
+    ${x ? `<p>Código: <b class="mono">${esc(x.id)}</b></p>` : ''}
+    <div class="g2"><label>Cliente (empresa)<input name="cliente" required value="${esc(x?.cliente || '')}"></label><label>NIT<input name="nit" value="${esc(x?.nit || '')}"></label></div>
+    <div class="g2"><label>Contacto (nombre, teléfono o correo)<input name="contacto" value="${esc(x?.contacto || '')}"></label>
+    <label>Aplicativo<select name="app" required>${apps.map(a => `<option value="${a.id}" ${x?.app === a.id ? 'selected' : ''}>${esc(a.nombre)}</option>`).join('')}</select></label></div>
+    <div class="g4"><label>Plan<select name="plan">${Object.entries(PLANES).map(([k, v]) => `<option value="${k}" ${(x?.plan || 'mensual') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+    <label>Valor ($)<input type="number" min="0" name="valor" value="${x?.valor ?? ''}"></label>
+    <label>Inicio<input type="date" name="inicio" value="${x?.inicio || hoy()}"></label><label>Vence<input type="date" name="vence" value="${x ? (x.vence || '') : venceDef()}"></label></div>
+    <div class="g4"><label>Estado<select name="estado">${['activa', 'prueba', 'suspendida'].map(k => `<option value="${k}" ${(x?.estado || 'activa') === k ? 'selected' : ''}>${EST_LIC[k]}</option>`).join('')}</select></label>
+    <label>Usuarios máximos<input type="number" min="0" name="usuariosMax" value="${x?.usuariosMax ?? ''}" placeholder="Sin límite"></label>
+    <label>Nombre que verá el cliente<input name="nombreApp" value="${esc(x?.nombreApp || '')}" placeholder="Opcional"></label><label>Color de marca<input type="color" name="color" value="${esc(x?.color || '#173260')}"></label></div>
+    <label>Mensaje si se bloquea<input name="mensaje" value="${esc(x?.mensaje || '')}" placeholder="Ej.: Licencia vencida. Comuníquese con AS SYSTEMS."></label>
+    <label>Notas internas (no las ve el cliente)<input name="notas" value="${esc(x?.notas || '')}"></label>
+    <div class="g2"><button type="button" class="btn sec peq" id="bMes">+1 mes</button><button type="button" class="btn sec peq" id="bAno">+1 año</button></div>
+  </form>`, { ancho: 'ancho', botones: `${x ? '<button class="btn rojo izq" id="bBorrarLic">Eliminar</button>' : ''}<button class="btn sec" data-cerrar>Cancelar</button><button class="btn" id="bGLic">Guardar</button>` });
+  const sumar = (meses) => { const i = $('[name=vence]', m); const base = i.value && i.value > hoy() ? new Date(i.value + 'T12:00:00') : new Date(); base.setMonth(base.getMonth() + meses); i.value = base.toISOString().slice(0, 10); };
+  $('#bMes', m).onclick = () => sumar(1); $('#bAno', m).onclick = () => sumar(12);
+  $('#bGLic', m).onclick = async () => {
+    const f = Object.fromEntries(new FormData($('#fLic', m))); if (!f.cliente.trim()) return toast('Escriba el cliente.', 'error');
+    const data = { cliente: f.cliente.trim(), nit: f.nit.trim(), contacto: f.contacto.trim(), app: f.app, plan: f.plan, valor: Number(f.valor) || 0, inicio: f.inicio, vence: f.vence || '',
+      estado: f.estado, usuariosMax: Number(f.usuariosMax) || 0, nombreApp: f.nombreApp.trim(), color: f.color, mensaje: f.mensaje.trim(), notas: f.notas.trim(), act: Date.now() };
+    if (!x) data.creado = Date.now();
+    try { await B.guardar('licencias', x?.id || codigoLicencia(), data); cerrarModal(); toast('Licencia guardada'); } catch (e) { toast(errorTexto(e), 'error'); }
+  };
+  const bb = $('#bBorrarLic', m); if (bb) bb.onclick = async () => {
+    if (await confirmar(`¿Eliminar la licencia de <b>${esc(x.cliente)}</b>? El aplicativo de ese cliente dejará de abrir. Si solo quiere pausarla, mejor márquela como Suspendida.`, { peligro: true, si: 'Eliminar' })) {
+      try { await B.borrar('licencias', x.id); toast('Licencia eliminada'); } catch (e) { toast(errorTexto(e), 'error'); } }
+  };
+}
+
 /* ------------------------------------------------------------ exportar */
 const filaMov = m => ({ Fecha: ffecha(m.fecha), Tipo: TIPO_MOV[m.tipo] || m.tipo, Código: m.codigo, Producto: m.producto, Unidad: m.unidad, Cantidad: m.cantidad, Saldo: m.saldo ?? '', Técnico: m.tecnico, Proveedor: m.proveedor || '', 'Destino / obra': m.destino || '', Documento: m.doc || '', Observación: m.obs || '', Registró: m.usuario || '' });
 const filaPrest = p => ({ Herramienta: p.herramienta, Código: p.codigo || '', Cantidad: p.cantidad, Técnico: p.tecnico, 'Fecha salida': ffecha(p.fechaSalida), Estado: p.estado, 'Fecha devolución': ffecha(p.fechaDevolucion), 'Recibió': p.recibio || '', Observación: [p.obs, p.obsDevolucion].filter(Boolean).join(' / ') });
@@ -667,7 +820,7 @@ function enlazar(r) {
   const on = (sel, ev, fn) => { const el = $(sel); if (el) el.addEventListener(ev, fn); };
   const v = $('#vista');
   v.onclick = e => {
-    const d = e.target.closest('button,[data-sub]')?.dataset || {};
+    const d = e.target.closest('button,[data-sub],[data-subapp]')?.dataset || {};
     if (d.sub) { S.f.sub = d.sub; S.f.q = ''; pintarVista(); }
     else if (d.kardex) verKardex(d.kardex);
     else if (d.editprod) formProducto(d.editprod);
@@ -681,6 +834,10 @@ function enlazar(r) {
     else if (d.edittec) formTecnico(d.edittec);
     else if (d.borrartec) borrarTecnico(d.borrartec);
     else if (d.editusr) formUsuario(d.editusr);
+    else if (d.subapp) { S.f.subApp = d.subapp; pintarVista(); }
+    else if (d.editapp) formApp(d.editapp);
+    else if (d.editlic) formLicencia(d.editlic);
+    else if (d.copiarlic) { navigator.clipboard?.writeText(d.copiarlic).then(() => toast('Código copiado: ' + d.copiarlic), () => toast(d.copiarlic)); }
   };
   on('#bEntrada', 'click', () => formMovimiento('entrada'));
   on('#bSalida', 'click', () => formMovimiento('salida'));
@@ -706,8 +863,13 @@ function enlazar(r) {
   on('#fqc', 'input', e => { S.f.qCel = e.target.value; pintarVista(); });
   on('#bNuevoTec', 'click', () => formTecnico());
   on('#bNuevoUsr', 'click', () => formUsuario());
-  on('#fileImp', 'change', e => { const f = e.target.files[0]; if (f) previaImportar(f); e.target.value = ''; });
+  on('#fileImp', 'change', e => { const fs = [...e.target.files]; if (fs.length) previaImportar(fs); e.target.value = ''; });
   on('#bSemilla', 'click', cargarSemilla);
+  on('#bNuevaApp', 'click', () => formApp());
+  on('#bNuevaLic', 'click', () => formLicencia());
+  on('#fqlic', 'input', e => { S.f.qLic = e.target.value; pintarVista(); });
+  on('#fapplic', 'change', e => { S.f.appLic = e.target.value; pintarVista(); });
+  on('#bSemApps', 'click', async () => { try { await B.lote(CATALOGO_BASE.map((a, i) => ({ col: 'aplicativos', id: a.id, data: { ...a, orden: i, act: Date.now() } }))); toast('Aplicativos registrados'); } catch (e) { toast(errorTexto(e), 'error'); } });
   on('#bExpTodo', 'click', exportarTodo);
   on('#bMasEnl', 'click', () => { const i = $$('#enlaces .enl').length; $('#enlaces').insertAdjacentHTML('beforeend', `<div class="g2 enl"><input data-en="${i}" placeholder="Nombre"><input data-eu="${i}" placeholder="https://…"></div>`); });
   on('#bGuardaEnl', 'click', async () => {

@@ -96,7 +96,7 @@ function pantallaLogin(mensaje = '') {
   $('#app').innerHTML = `
   <div class="login-caja">
     <img src="img/logo-systems.png" alt="AS SYSTEMS" class="login-logo">
-    <p class="sub">Araucana de Gases S.A.S. E.S.P.</p>
+    <p class="sub">Aplicativo raíz · control de aplicativos y licencias</p>
     ${B.modo === 'local' ? '<div class="aviso">Modo de prueba local: los datos quedan solo en este equipo. Para compartir en la nube, configure Firebase (ver guía).</div>' : ''}
     ${mensaje ? `<div class="aviso rojo">${esc(mensaje)}</div>` : ''}
     <form id="fLogin">
@@ -157,7 +157,7 @@ function marco() {
   document.body.className = 'app';
   $('#app').innerHTML = `
   <header class="barra">
-    <div class="marca"><img src="img/logo-systems.png" alt="AS SYSTEMS"><small>Araucana de Gases</small></div>
+    <div class="marca"><img src="img/logo-systems.png" alt="AS SYSTEMS"><small>Aplicativo raíz</small></div>
     <div class="quien"><span>${esc(S.perfil.nombre || S.user.email)}</span><small>${ROLES[rol()]}${B.modo === 'local' ? ' · prueba local' : ''}</small></div>
     <button class="btn sec peq" id="btnSalir">Salir</button>
   </header>
@@ -704,7 +704,7 @@ const estadoLic = l => l.estado !== 'activa' ? l.estado : (l.vence && diasHasta(
 const EST_LIC = { activa: 'Activa', vencida: 'Vencida', suspendida: 'Suspendida', prueba: 'Prueba' };
 const PLANES = { gratis: 'Sin costo', mensual: 'Mensual', anual: 'Anual', unico: 'Pago único' };
 const CATALOGO_BASE = [
-  { id: 'inventario', nombre: 'AS SYSTEMS · Inventario', tipo: 'Web + APK + PC', descripcion: 'Inventario de bodega, préstamo de herramientas, celulares y técnicos', web: 'https://glp-adg.github.io/as-systems/', repo: 'https://github.com/GLP-ADG/as-systems', firebase: 'as-systems-97612', estado: 'produccion' },
+  { id: 'inventario', nombre: 'Inventario de bodega', tipo: 'Módulo de AS SYSTEMS', descripcion: 'Bodega, préstamo de herramientas, celulares y técnicos. Viene incluido dentro de AS SYSTEMS', web: 'https://glp-adg.github.io/as-systems/', repo: 'https://github.com/GLP-ADG/as-systems', firebase: 'as-systems-97612', estado: 'produccion' },
   { id: 'glp', nombre: 'GLP Araucana', tipo: 'APK', descripcion: 'Lecturas de estaciones, trasiegos, mantenimiento y balance de GLP', web: '', repo: '', firebase: 'glp-adg', estado: 'produccion' },
   { id: 'adgmov', nombre: 'ADG Movimientos', tipo: 'APK', descripcion: 'Control de movimientos financieros con usuarios', web: '', repo: '', firebase: 'adg-movimientos', estado: 'produccion' },
   { id: 'mantenimiento', nombre: 'AS Mantenimiento', tipo: 'Web + APK', descripcion: 'Planes de mantenimiento preventivo con IA, por membresía', web: MANT_URL, repo: '', firebase: 'as-mantenimiento', estado: 'produccion' },
@@ -745,7 +745,7 @@ function vAplicativos() {
     : `<div class="vacio"><p>${S.licencias.length ? 'Sin resultados.' : 'Aún no hay licencias. Cree una por cada empresa que use un aplicativo, incluida Araucana de Gases.'}</p></div>`}
     <p class="nota">Cada aplicativo replicado consulta su código de licencia al abrir. Si la licencia está suspendida o vencida, el aplicativo no deja entrar y muestra un aviso para comunicarse con usted.</p>`;
   }
-  return `<div class="cab-vista"><h2>Aplicativos y licencias</h2><div class="acciones">${sub === 'catalogo' ? '<button class="btn sec" id="bNuevaApp">+ Aplicativo</button>' : '<button class="btn" id="bNuevaLic">+ Licencia</button>'}</div></div>
+  return `<div class="cab-vista"><h2>AS SYSTEMS · Aplicativos y licencias</h2><div class="acciones">${sub === 'catalogo' ? '<button class="btn sec" id="bNuevaApp">+ Aplicativo</button>' : '<button class="btn" id="bNuevaLic">+ Licencia</button>'}</div></div>
   <div class="pestanas"><button data-subapp="catalogo" class="${sub === 'catalogo' ? 'act' : ''}">Mis aplicativos</button><button data-subapp="licencias" class="${sub === 'licencias' ? 'act' : ''}">Clientes y licencias</button></div>${cuerpo}`;
 }
 function formApp(id) {

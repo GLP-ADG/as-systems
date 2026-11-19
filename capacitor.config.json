@@ -1,0 +1,6 @@
+{
+  "appId": "co.com.araucanadegases.assystems",
+  "appName": "AS SYSTEMS",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}

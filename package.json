@@ -1,0 +1,22 @@
+{
+  "name": "as-systems",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AS SYSTEMS - Inventario de bodega, préstamo de herramientas y celulares - Araucana de Gases S.A.S. E.S.P.",
+  "scripts": {
+    "build": "node build.mjs",
+    "sync": "node build.mjs && npx cap sync android",
+    "dev": "node build.mjs --serve"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2",
+    "firebase": "12.19.0",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "8.5.2",
+    "esbuild": "0.25.10"
+  }
+}

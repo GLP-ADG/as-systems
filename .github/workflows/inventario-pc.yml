@@ -1,0 +1,31 @@
+# Genera el actualizador del programa "Inventario Araucana de Gases" (versión conectada a AS SYSTEMS).
+# Actions → "Actualizador Inventario Araucana" → Run workflow. Al terminar, descargue el .exe en "Artifacts".
+name: Actualizador Inventario Araucana
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['inventario-pc/**']
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - name: Empaquetar programa (app.asar)
+        run: |
+          New-Item -ItemType Directory -Force dist-inv | Out-Null
+          npx --yes @electron/asar pack inventario-pc/app dist-inv/app.asar
+      - name: Crear actualizador (NSIS)
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            $p = "${env:ProgramFiles(x86)}\NSIS"
+            if (-not (Test-Path "$p\makensis.exe")) { choco install nsis -y --no-progress }
+            $env:Path += ";${env:ProgramFiles(x86)}\NSIS"
+          }
+          makensis /INPUTCHARSET UTF8 /V3 inventario-pc/actualizar.nsi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Actualizar-Inventario-Araucana-1.2.0
+          path: dist-inv/Actualizar_Inventario_Araucana_*.exe

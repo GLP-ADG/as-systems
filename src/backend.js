@@ -11,7 +11,7 @@ import {
   onSnapshot, query, orderBy, limit, setDoc, updateDoc, deleteDoc, getDoc, runTransaction, writeBatch
 } from 'firebase/firestore';
 
-export const COLS = ['productos', 'movimientos', 'prestamos', 'celulares', 'tecnicos', 'usuarios', 'config'];
+export const COLS = ['productos', 'movimientos', 'prestamos', 'celulares', 'tecnicos', 'usuarios', 'config', 'aplicativos', 'licencias'];
 
 export function slug(s) {
   return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
@@ -78,6 +78,27 @@ function firebaseBackend(cfg) {
         tx.set(ref('movimientos', id), { ...resto, saldo: nuevo, ts: Date.now() });
         if (mov._prestamo) tx.set(ref('prestamos', mov._prestamo.id), mov._prestamo.data, { merge: true });
         return nuevo;
+      });
+    },
+    // Varios movimientos en una sola operación: o se guardan todos o ninguno
+    async movimientos(movs, { permitirNegativo = false } = {}) {
+      return runTransaction(db, async tx => {
+        const ids = [...new Set(movs.map(m => idCodigo(m.codigo)))];
+        const snaps = await Promise.all(ids.map(id => tx.get(ref('productos', id))));
+        const stock = {};
+        snaps.forEach((p, i) => { if (!p.exists()) throw new Error('El producto ' + ids[i] + ' no existe en el catálogo.'); stock[ids[i]] = { v: Number(p.data().stock || 0), n: p.data().nombre }; });
+        const ts = Date.now(); const escritos = [];
+        movs.forEach((m, i) => {
+          const pid = idCodigo(m.codigo); const nuevo = +(stock[pid].v + m.delta).toFixed(4);
+          if (nuevo < 0 && !permitirNegativo) throw new Error(`No hay existencias suficientes de ${stock[pid].n}: hay ${stock[pid].v}.`);
+          stock[pid].v = nuevo;
+          const { delta, _prestamo, ...resto } = m;
+          escritos.push(['movimientos', nuevoId(), { ...resto, saldo: nuevo, ts: ts + i }]);
+          if (_prestamo) escritos.push(['prestamos', _prestamo.id, _prestamo.data]);
+        });
+        ids.forEach(id => tx.update(ref('productos', id), { stock: stock[id].v, act: ts }));
+        escritos.forEach(([c, id, d]) => tx.set(ref(c, id), d, { merge: true }));
+        return movs.length;
       });
     },
     async lote(ops, progreso) { // ops: [{col,id,data,merge}] en bloques de 400
@@ -147,6 +168,19 @@ function localBackend() {
       set('movimientos', nuevoId(), { ...resto, saldo: nuevo, ts: Date.now() });
       if (mov._prestamo) set('prestamos', mov._prestamo.id, mov._prestamo.data);
       save(); ['productos', 'movimientos', 'prestamos'].forEach(emitir); return nuevo;
+    },
+    async movimientos(movs, { permitirNegativo = false } = {}) {
+      const tmp = {};
+      for (const m of movs) { const pid = idCodigo(m.codigo); const p = st.data.productos[pid];
+        if (!p) throw new Error('El producto ' + m.codigo + ' no existe en el catálogo.');
+        tmp[pid] = +((tmp[pid] ?? Number(p.stock || 0)) + m.delta).toFixed(4);
+        if (tmp[pid] < 0 && !permitirNegativo) throw new Error(`No hay existencias suficientes de ${p.nombre}: hay ${p.stock}.`); }
+      const ts = Date.now(); const run = {};
+      movs.forEach((m, i) => { const pid = idCodigo(m.codigo); run[pid] = +((run[pid] ?? Number(st.data.productos[pid].stock || 0)) + m.delta).toFixed(4);
+        const { delta, _prestamo, ...resto } = m; set('movimientos', nuevoId(), { ...resto, saldo: run[pid], ts: ts + i });
+        if (_prestamo) set('prestamos', _prestamo.id, _prestamo.data); });
+      Object.entries(run).forEach(([pid, v]) => { st.data.productos[pid].stock = v; st.data.productos[pid].act = ts; });
+      save(); ['productos', 'movimientos', 'prestamos'].forEach(emitir); return movs.length;
     },
     async lote(ops, progreso) {
       ops.forEach(o => set(o.col, o.id || nuevoId(), o.data, o.merge !== false)); save();

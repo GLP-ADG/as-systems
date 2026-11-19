@@ -1,0 +1,35 @@
+# Compila el APK de AS SYSTEMS en GitHub (no necesita Android Studio).
+# Actions → "Compilar APK AS SYSTEMS" → Run workflow. Al terminar, descargue el APK en "Artifacts".
+name: Compilar APK AS SYSTEMS
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'www/**', 'assets/**', 'package.json']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: android-actions/setup-android@v3
+      - name: Preparar web y sincronizar con Android
+        run: |
+          npm ci
+          node build.mjs
+          npx cap add android
+          npx capacitor-assets generate --android
+          npx cap sync android
+      - name: Compilar APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/AS-SYSTEMS.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AS-SYSTEMS-apk-${{ github.run_number }}
+          path: android/app/build/outputs/apk/debug/AS-SYSTEMS.apk

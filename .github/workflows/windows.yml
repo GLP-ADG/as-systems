@@ -1,0 +1,26 @@
+# Genera el instalador de AS SYSTEMS para Windows (.exe).
+# Actions → "Instalador Windows AS SYSTEMS" → Run workflow. Al terminar, descargue el .exe en "Artifacts".
+name: Instalador Windows AS SYSTEMS
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['pc/**', 'www/icon-512.png']
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - name: Crear instalador
+        working-directory: pc
+        run: |
+          New-Item -ItemType Directory -Force build | Out-Null
+          Copy-Item ../www/icon-512.png build/icon.png
+          npm install
+          npm run dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AS-SYSTEMS-Instalador-Windows-${{ github.run_number }}
+          path: pc/dist/*.exe

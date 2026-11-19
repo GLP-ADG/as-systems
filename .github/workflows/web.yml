@@ -1,0 +1,23 @@
+# Publica AS SYSTEMS como página web (para abrirla en los PC y en cualquier celular).
+# Se activa solo al subir cambios. Requiere: Settings → Pages → Source: "GitHub Actions".
+name: Publicar web AS SYSTEMS
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions: { contents: read, pages: write, id-token: write }
+concurrency: { group: pages, cancel-in-progress: true }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: '${{ steps.d.outputs.page_url }}' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci && node build.mjs
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: www }
+      - id: d
+        uses: actions/deploy-pages@v4

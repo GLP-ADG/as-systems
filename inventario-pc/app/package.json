@@ -1,0 +1,8 @@
+{
+  "name": "inventario-araucana",
+  "productName": "Inventario Araucana de Gases",
+  "version": "1.2.0",
+  "description": "Inventario de bodega conectado a AS SYSTEMS",
+  "author": "AS SYSTEMS",
+  "main": "main.js"
+}

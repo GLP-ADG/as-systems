@@ -51,6 +51,15 @@ service cloud.firestore {
       allow create, update: if operador();
       allow delete: if admin();
     }
+    // Aplicativo madre: catálogo de aplicativos y licencias de clientes
+    match /aplicativos/{id} {
+      allow read, write: if admin();
+    }
+    match /licencias/{codigo} {
+      // Cualquier aplicativo puede consultar SU licencia conociendo el código; solo el administrador las lista o modifica
+      allow get: if true;
+      allow list, write: if admin();
+    }
     match /celulares/{id} {
       allow read: if activo();
       allow create, update: if operador();

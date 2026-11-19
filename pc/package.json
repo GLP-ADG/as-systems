@@ -1,0 +1,37 @@
+{
+  "name": "as-systems-pc",
+  "version": "1.0.0",
+  "description": "AS SYSTEMS para Windows",
+  "author": "AS SYSTEMS",
+  "main": "main.js",
+  "scripts": {
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "38.2.0",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "co.com.assystems.pc",
+    "productName": "AS SYSTEMS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js"
+    ],
+    "win": {
+      "target": "nsis",
+      "artifactName": "AS-SYSTEMS-Instalador-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AS SYSTEMS",
+      "uninstallDisplayName": "AS SYSTEMS"
+    }
+  }
+}

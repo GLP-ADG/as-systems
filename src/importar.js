@@ -6,6 +6,8 @@ const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLow
 
 // Orden importa: la primera regla que calce se queda con la columna
 const CAMPOS = [
+  ['anulado', /anulad/],
+  ['registro', /^registr/],
   ['imei', /imei|serial|n.? ?de ?serie/],
   ['codigo', /^cod|codigo|referencia|^ref\b|item/],
   ['marca', /marca/],
@@ -21,6 +23,8 @@ const CAMPOS = [
   ['unidad', /^unidad|^und|^u\.?m|medida/],
   ['categoria', /categoria|grupo|familia|clase|linea de/],
   ['minimo', /minim|^min\b/],
+  ['maximo', /^alto|maxim|^max\b/],
+  ['valor', /valor|precio|costo/],
   ['cantidad', /cant|stock|existencia|saldo|inventario|^total|inicial|disponible/],
   ['tipo', /tipo|movimiento|^mov/],
   ['destino', /obra|destino|direccion|proyecto|sector|barrio|usuario|suscriptor/],
@@ -140,6 +144,7 @@ export function prepararImportacion(hojas, ctx, opciones) {
   for (const h of hojas) {
     if (h.tipo === 'ignorar') continue;
     for (const r of h.registros) {
+      if (r.anulado !== undefined && r.anulado !== null && r.anulado !== '' && !/^(no|false|0)$/i.test(txt(r.anulado))) { resumen.omitidas++; continue; }
       if (h.tipo === 'productos') {
         if (!txt(r.codigo) && !txt(r.nombre)) { resumen.omitidas++; continue; }
         const codigo = txt(r.codigo) || ('IMP-' + slug(r.nombre).slice(0, 20).toUpperCase());
@@ -152,6 +157,7 @@ export function prepararImportacion(hojas, ctx, opciones) {
           act: ahora
         };
         if (r.minimo !== undefined && r.minimo !== null && r.minimo !== '') data.minimo = num(r.minimo);
+        if (r.maximo !== undefined && r.maximo !== null && r.maximo !== '') data.maximo = num(r.maximo);
         if (opciones.stockDesdeExcel && r.cantidad !== undefined && r.cantidad !== null && r.cantidad !== '') data.stock = num(r.cantidad);
         else if (!prev) data.stock = 0;
         if (!prev) data.creado = ahora;
@@ -160,20 +166,20 @@ export function prepararImportacion(hojas, ctx, opciones) {
       }
       else if (h.tipo === 'entrada' || h.tipo === 'salida' || h.tipo === 'movimientos') {
         let tipo = h.tipo;
-        if (tipo === 'movimientos') { const t = norm(r.tipo); tipo = /sal|desp|cons|egr/.test(t) ? 'salida' : /ent|ing|comp|inic/.test(t) ? 'entrada' : ''; }
-        const cant = Math.abs(num(r.cantidad));
+        if (tipo === 'movimientos') { const t = norm(r.tipo); tipo = /sal|desp|cons|egr/.test(t) ? 'salida' : /ent|ing|comp|inic/.test(t) ? 'entrada' : /devol/.test(t) ? 'devolucion' : /ajus/.test(t) ? 'ajuste' : /prest/.test(t) ? 'prestamo' : ''; }
         const p = productoDe(r);
+        const cant = tipo === 'ajuste' ? num(r.cantidad) : Math.abs(num(r.cantidad));
         if (!tipo || !p || !cant) { resumen.omitidas++; continue; }
         const t = tecnico(r.tecnico);
         const mov = {
           tipo, codigo: p.codigo, producto: p.nombre, unidad: p.unidad || '', cantidad: cant,
           tecnico: t?.nombre || '', tecnicoId: t?.id || '', destino: txt(r.destino), doc: txt(r.doc),
-          proveedor: txt(r.proveedor), obs: txt(r.obs), fecha: aFecha(r.fecha) || new Date().toISOString().slice(0, 10),
-          uid: ctx.usuario.uid, usuario: ctx.usuario.nombre, ts: ahora + resumen.movimientos, importado: true
+          proveedor: txt(r.proveedor), obs: txt(r.obs), valor: num(r.valor) || 0, fecha: aFecha(r.fecha) || new Date().toISOString().slice(0, 10),
+          uid: ctx.usuario.uid, usuario: txt(r.registro) || ctx.usuario.nombre, ts: ahora + resumen.movimientos, importado: true
         };
         ops.push({ col: 'movimientos', id: nuevoId(), data: mov, merge: false }); resumen.movimientos++;
         if (opciones.movAjustanStock) {
-          const id = idCodigo(p.codigo); deltas.set(id, (deltas.get(id) || 0) + (tipo === 'entrada' ? cant : -cant));
+          const id = idCodigo(p.codigo); deltas.set(id, (deltas.get(id) || 0) + (tipo === 'entrada' || tipo === 'devolucion' || tipo === 'ajuste' ? cant : -cant));
         }
       }
       else if (h.tipo === 'prestamos') {

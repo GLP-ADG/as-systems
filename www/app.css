@@ -144,3 +144,13 @@ main{padding:1.2rem;max-width:1300px}
   .tabla:not(.lineas) .num{text-align:left}
   .tabla tr.bajo{border-color:#f3b4ae!important;background:#fff5f4!important}
 }
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:0 .8rem}
+.grilla-filtros{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin:.6rem 0 .4rem}
+.grilla-filtros input[type=search]{flex:1 1 260px;width:auto}.grilla-filtros select{width:auto;flex:0 1 220px}.grilla-filtros .chk{margin:0}
+.grilla{max-height:46vh;overflow:auto;border:1px solid var(--borde);border-radius:8px}
+.grilla thead th{position:sticky;top:0;z-index:1}
+.grilla tr.con td{background:#eef6ee}.grilla tr.exc td{background:#fdecea}
+.grilla input{padding:.35rem .5rem}
+.grilla-resumen{font-size:.88rem;color:var(--gris);padding:.5rem 0}
+.rojo-t{color:var(--rojo);font-weight:600}
+@media (max-width:820px){.g4{grid-template-columns:1fr 1fr}.grilla{max-height:42vh}.grilla .tabla.lineas th:nth-child(3),.grilla .tabla.lineas td:nth-child(3){display:none}}
